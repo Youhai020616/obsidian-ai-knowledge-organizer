@@ -26,6 +26,7 @@ export interface OrganizerSettings {
 	logFolder: string;
 	maxContextChars: number;
 	askSearchLimit: number;
+	askScope: 'active' | 'vault';
 	allowFullNoteContext: boolean;
 	autoCreateInbox: boolean;
 }
@@ -38,9 +39,36 @@ export interface OrganizerData {
 export interface OrganizerState {
 	proposals: ChangeProposal[];
 	auditLog: AuditEntry[];
+	conversations: Conversation[];
+	activeConversationId?: string;
 	lastAsk?: AskAnswer;
 	healthReport?: HealthReport;
 	searchIndex?: SearchIndex;
+}
+
+export type ChatMessageRole = 'user' | 'assistant' | 'system';
+
+/**
+ * A single turn in a conversation. `proposalIds` references entries in
+ * OrganizerState.proposals (the source of truth) — messages never copy
+ * proposal data, so apply/reject/rollback keep working unchanged.
+ */
+export interface ChatMessage {
+	id: string;
+	role: ChatMessageRole;
+	at: string;
+	text?: string;
+	citations?: CandidateNote[];
+	proposalIds?: string[];
+	kind?: 'progress' | 'error';
+}
+
+export interface Conversation {
+	id: string;
+	title: string;
+	createdAt: string;
+	updatedAt: string;
+	messages: ChatMessage[];
 }
 
 export interface NoteSnapshot {

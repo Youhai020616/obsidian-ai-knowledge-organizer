@@ -18,6 +18,7 @@ export const DEFAULT_SETTINGS: OrganizerSettings = {
 	logFolder: '.ai-organizer/logs',
 	maxContextChars: 12000,
 	askSearchLimit: 8,
+	askScope: 'active',
 	allowFullNoteContext: false,
 	autoCreateInbox: true,
 };
@@ -25,6 +26,7 @@ export const DEFAULT_SETTINGS: OrganizerSettings = {
 export const DEFAULT_STATE: OrganizerState = {
 	proposals: [],
 	auditLog: [],
+	conversations: [],
 };
 
 export const DEFAULT_DATA: OrganizerData = {

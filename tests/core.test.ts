@@ -29,6 +29,7 @@ import {
 import {
 	buildProposal,
 	mergeFrontmatter,
+	redactSecrets,
 	scoreNote,
 	slugify,
 	topKeywords,
@@ -70,6 +71,25 @@ describe('utils', () => {
 		});
 		expect(scored.score).toBeGreaterThan(0);
 		expect(scored.excerpt.length).toBeGreaterThan(0);
+	});
+
+	it('redacts secrets before content leaves the vault', () => {
+		// Fake credentials only — shaped like real ones to exercise the regex.
+		expect(redactSecrets('Root密码：s3cr3tP4ssw0rd00')).toBe(
+			'Root密码：[REDACTED]',
+		);
+		const key = redactSecrets(
+			'deepseek api key :sk-abcdef0123456789abcdef0123',
+		);
+		expect(key).toContain('[REDACTED]');
+		expect(key).not.toContain('abcdef0123');
+		expect(redactSecrets('railway token : aaaa1111 bbbb2222 cccc3333')).toBe(
+			'railway token : [REDACTED]',
+		);
+		// Ordinary prose that merely mentions a label is untouched.
+		expect(
+			redactSecrets('This note explains how the token flow works.'),
+		).toBe('This note explains how the token flow works.');
 	});
 });
 

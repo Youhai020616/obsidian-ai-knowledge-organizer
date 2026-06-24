@@ -283,6 +283,40 @@ export function setOperationSelected(
 	};
 }
 
+const SECRET_LABEL =
+	'password|passwd|pwd|secret|token|api[\\s_-]?key|access[\\s_-]?key|private[\\s_-]?key|密码|口令|密钥|令牌';
+
+const LABELED_SECRET = new RegExp(`(${SECRET_LABEL})(\\s*[:：=]\\s*).+`, 'gi');
+
+const SECRET_TOKEN_PATTERNS: RegExp[] = [
+	/\bsk-?\s?[A-Za-z0-9]{12,}\b/gi,
+	/\bghp_[A-Za-z0-9]{20,}\b/g,
+	/\bgithub_pat_[A-Za-z0-9_]{20,}\b/g,
+	/\bAKIA[0-9A-Z]{16}\b/g,
+];
+
+/**
+ * Best-effort redaction of secrets (API keys, passwords, tokens) before note
+ * content is shown in answers or sent to a cloud provider. Token patterns run
+ * first so a labelled replacement cannot truncate them. This reduces accidental
+ * exposure; it is not a substitute for keeping credentials out of the vault.
+ */
+export function redactSecrets(text: string): string {
+	if (!text) {
+		return text;
+	}
+	let out = text;
+	for (const pattern of SECRET_TOKEN_PATTERNS) {
+		out = out.replace(pattern, '[REDACTED]');
+	}
+	out = out.replace(
+		LABELED_SECRET,
+		(_match, label: string, separator: string) =>
+			`${label}${separator}[REDACTED]`,
+	);
+	return out;
+}
+
 function splitFrontmatter(markdown: string): {
 	frontmatter: string;
 	body: string;

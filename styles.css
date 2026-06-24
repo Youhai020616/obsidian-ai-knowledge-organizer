@@ -1,40 +1,376 @@
+/* ============ AI Organizer — conversational view ============ */
+
 .aiko-view {
-	padding: 18px;
-}
-
-.aiko-header,
-.aiko-proposal-head,
-.aiko-operation-row,
-.aiko-ask-row,
-.aiko-actions {
-	align-items: center;
 	display: flex;
-	gap: 10px;
+	flex-direction: column;
+	height: 100%;
+	padding: 0;
 }
 
-.aiko-header,
-.aiko-proposal-head {
-	justify-content: space-between;
+/* ---- Top bar ---- */
+.aiko-topbar {
+	display: flex;
+	align-items: center;
+	gap: var(--size-4-2);
+	padding: var(--size-4-2) var(--size-4-3);
+	border-bottom: 1px solid var(--background-modifier-border);
+	flex-shrink: 0;
 }
 
-.aiko-header h2,
-.aiko-proposal h4 {
-	margin-bottom: 4px;
-	margin-top: 0;
+.aiko-topbar-title {
+	display: flex;
+	align-items: center;
+	gap: var(--size-2-3);
+	flex: 1;
+	min-width: 0;
+	font-weight: var(--font-semibold);
 }
 
-.aiko-panel,
-.aiko-section,
-.aiko-proposal {
+.aiko-logo {
+	color: var(--interactive-accent);
+}
+
+.aiko-pending-badge {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--size-2-2);
+	padding: var(--size-2-1) var(--size-2-3);
+	font-size: var(--font-ui-smaller);
+	font-weight: var(--font-semibold);
+	color: var(--interactive-accent);
+	background: transparent;
+	border: 1px solid var(--interactive-accent);
+	border-radius: var(--radius-l);
+	box-shadow: none;
+	cursor: pointer;
+}
+
+.aiko-pending-dot {
+	width: 6px;
+	height: 6px;
+	border-radius: 50%;
+	background: var(--interactive-accent);
+}
+
+.aiko-icon-btn {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 28px;
+	height: 28px;
+	padding: 0;
+	color: var(--text-muted);
+	background: transparent;
+	border-radius: var(--radius-s);
+	box-shadow: none;
+	cursor: pointer;
+}
+
+.aiko-icon-btn:hover {
+	color: var(--text-normal);
+	background: var(--background-modifier-hover);
+}
+
+/* ---- Chat stream ---- */
+.aiko-chat {
+	flex: 1;
+	overflow-y: auto;
+	display: flex;
+	flex-direction: column;
+	gap: var(--size-4-3);
+	padding: var(--size-4-4) var(--size-4-3);
+}
+
+.aiko-msg-user {
+	align-self: flex-end;
+	max-width: 85%;
+	padding: var(--size-2-3) var(--size-4-2);
+	background: var(--background-modifier-hover);
 	border: 1px solid var(--background-modifier-border);
-	border-radius: 8px;
-	margin-top: 16px;
-	padding: 14px;
+	border-radius: var(--radius-m) var(--radius-m) var(--radius-s) var(--radius-m);
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
 }
 
-.aiko-panel,
-.aiko-proposal {
+.aiko-msg-ai {
+	display: flex;
+	gap: var(--size-4-2);
+}
+
+.aiko-msg-avatar {
+	flex-shrink: 0;
+	color: var(--interactive-accent);
+}
+
+.aiko-msg-body {
+	flex: 1;
+	min-width: 0;
+}
+
+.aiko-msg-body > p {
+	margin: 0 0 var(--size-2-3);
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+}
+
+.aiko-msg-system {
+	align-self: center;
+	font-size: var(--font-ui-smaller);
+	color: var(--text-faint);
+}
+
+.aiko-msg-error {
+	color: var(--text-error);
+}
+
+.aiko-citations {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--size-2-2);
+	margin-top: var(--size-2-2);
+}
+
+.aiko-link-button {
+	padding: var(--size-2-1) var(--size-2-3);
+	font-size: var(--font-ui-smaller);
+	color: var(--text-accent);
+	background: var(--background-modifier-hover);
+	border-radius: var(--radius-s);
+	box-shadow: none;
+	cursor: pointer;
+}
+
+.aiko-link-button:hover {
+	color: var(--text-accent-hover);
+}
+
+/* ---- Empty state ---- */
+.aiko-empty {
+	flex: 1;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	text-align: center;
+	gap: var(--size-2-2);
+	padding: var(--size-4-6) var(--size-4-4);
+}
+
+.aiko-empty-logo {
+	font-size: 2em;
+	color: var(--interactive-accent);
+}
+
+.aiko-empty h2 {
+	margin: var(--size-2-2) 0 0;
+}
+
+.aiko-starters {
+	display: flex;
+	flex-direction: column;
+	gap: var(--size-2-3);
+	width: 100%;
+	margin-top: var(--size-4-3);
+}
+
+.aiko-starter {
+	display: flex;
+	align-items: center;
+	gap: var(--size-4-2);
+	padding: var(--size-4-2) var(--size-4-3);
+	font-size: var(--font-ui-small);
+	text-align: left;
 	background: var(--background-secondary);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-m);
+	box-shadow: none;
+	cursor: pointer;
+}
+
+.aiko-starter:hover {
+	background: var(--background-modifier-hover);
+	border-color: var(--interactive-accent);
+}
+
+.aiko-starter-ic {
+	color: var(--interactive-accent);
+}
+
+/* ---- Composer ---- */
+.aiko-composer {
+	flex-shrink: 0;
+	position: relative;
+	padding: var(--size-4-2) var(--size-4-3) var(--size-4-3);
+	border-top: 1px solid var(--background-modifier-border);
+}
+
+.aiko-composer-input {
+	width: 100%;
+	min-height: 54px;
+	padding: var(--size-2-3) var(--size-4-2);
+	font-family: inherit;
+	font-size: var(--font-ui-small);
+	line-height: 1.5;
+	background: var(--background-secondary);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-m);
+	resize: none;
+}
+
+.aiko-composer-input:focus {
+	border-color: var(--interactive-accent);
+	box-shadow: none;
+}
+
+.aiko-composer-bar {
+	display: flex;
+	align-items: center;
+	gap: var(--size-2-3);
+	margin-top: var(--size-2-3);
+}
+
+.aiko-pill {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--size-2-2);
+	padding: var(--size-2-2) var(--size-2-3);
+	font-size: var(--font-ui-smaller);
+	color: var(--text-normal);
+	background: var(--background-secondary);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-s);
+	box-shadow: none;
+	cursor: pointer;
+}
+
+.aiko-pill:hover {
+	background: var(--background-modifier-hover);
+}
+
+.aiko-pill-static,
+.aiko-pill-static:hover {
+	background: var(--background-secondary);
+	cursor: default;
+}
+
+.aiko-pill-ic {
+	color: var(--interactive-accent);
+}
+
+.aiko-pill-caret {
+	color: var(--text-faint);
+}
+
+.aiko-send {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 32px;
+	height: 32px;
+	margin-left: auto;
+	padding: 0;
+	color: var(--text-on-accent);
+	background: var(--interactive-accent);
+	border-radius: var(--radius-s);
+	cursor: pointer;
+}
+
+.aiko-send:hover {
+	background: var(--interactive-accent-hover);
+}
+
+/* ---- Model popover ---- */
+.aiko-model-pop {
+	position: absolute;
+	left: var(--size-4-3);
+	bottom: 64px;
+	z-index: var(--layer-menu);
+	width: 240px;
+	padding: var(--size-2-2);
+	background: var(--background-secondary);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-m);
+	box-shadow: var(--shadow-s);
+}
+
+.aiko-model-item {
+	display: flex;
+	align-items: center;
+	gap: var(--size-2-3);
+	padding: var(--size-2-3);
+	font-size: var(--font-ui-small);
+	border-radius: var(--radius-s);
+	cursor: pointer;
+}
+
+.aiko-model-item:hover {
+	background: var(--background-modifier-hover);
+}
+
+.aiko-model-item.is-active {
+	color: var(--text-accent);
+}
+
+.aiko-model-item.is-disabled {
+	opacity: 0.55;
+}
+
+.aiko-model-check {
+	width: 12px;
+	color: var(--interactive-accent);
+}
+
+.aiko-model-label {
+	flex: 1;
+}
+
+.aiko-model-prov {
+	font-size: var(--font-ui-smaller);
+	color: var(--text-faint);
+}
+
+/* ---- Proposal card (reused proposal engine) ---- */
+.aiko-proposal {
+	margin-top: var(--size-4-3);
+	padding: var(--size-4-3);
+	background: var(--background-secondary);
+	border: 1px solid var(--background-modifier-border);
+	border-left: 3px solid var(--background-modifier-border);
+	border-radius: var(--radius-m);
+}
+
+.aiko-proposal-pending {
+	border-left-color: var(--interactive-accent);
+}
+
+.aiko-proposal-applied {
+	border-left-color: var(--text-success);
+}
+
+.aiko-proposal-failed {
+	border-left-color: var(--text-error);
+}
+
+.aiko-proposal-rejected {
+	opacity: 0.6;
+}
+
+.aiko-proposal h4 {
+	margin: 0 0 var(--size-2-1);
+}
+
+.aiko-proposal-head {
+	display: flex;
+	align-items: flex-start;
+	justify-content: space-between;
+	gap: var(--size-4-2);
+	flex-wrap: wrap;
+}
+
+.aiko-actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--size-2-3);
 }
 
 .aiko-muted {
@@ -42,117 +378,68 @@
 	font-size: var(--font-ui-smaller);
 }
 
-.aiko-actions {
-	flex-wrap: wrap;
-	justify-content: flex-end;
-}
-
-.aiko-ask-row input {
-	flex: 1;
-	min-width: 180px;
-}
-
-.aiko-url-input {
-	box-sizing: border-box;
-	margin-top: 8px;
-	width: 100%;
-}
-
-.aiko-modal-actions {
-	margin-top: 14px;
-}
-
-.aiko-answer {
-	background: var(--background-primary);
-	border: 1px solid var(--background-modifier-border);
-	border-radius: 6px;
-	margin-top: 12px;
-	padding: 12px;
-}
-
-.aiko-citations {
-	display: flex;
-	flex-wrap: wrap;
-	gap: 8px;
-	margin-top: 10px;
-}
-
-.aiko-link-button {
-	font-size: var(--font-ui-smaller);
-}
-
-.aiko-proposal-pending {
-	border-color: var(--interactive-accent);
-}
-
-.aiko-proposal-applied {
-	border-color: var(--text-success);
-}
-
-.aiko-proposal-failed {
-	border-color: var(--text-error);
-}
-
 .aiko-error {
 	color: var(--text-error);
-	font-weight: 600;
+	font-weight: var(--font-semibold);
 }
 
 .aiko-operation {
+	margin-top: var(--size-2-3);
+	padding: var(--size-2-3);
 	background: var(--background-primary);
 	border: 1px solid var(--background-modifier-border);
-	border-radius: 6px;
-	margin-top: 10px;
-	padding: 10px;
+	border-radius: var(--radius-s);
 }
 
 .aiko-operation-row {
-	align-items: flex-start;
+	display: flex;
+	align-items: center;
 	flex-wrap: wrap;
+	gap: var(--size-2-3);
 }
 
 .aiko-preview-grid {
 	display: grid;
-	gap: 12px;
-	grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-	margin-top: 8px;
+	gap: var(--size-2-3);
+	grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+	margin-top: var(--size-2-2);
 }
 
 .aiko-preview-grid pre {
-	background: var(--background-secondary);
-	border-radius: 6px;
 	max-height: 340px;
+	padding: var(--size-2-3);
 	overflow: auto;
-	padding: 10px;
+	background: var(--background-secondary);
+	border-radius: var(--radius-s);
 	white-space: pre-wrap;
 }
 
 .aiko-diff-table {
+	width: 100%;
+	margin-top: var(--size-2-2);
 	border-collapse: collapse;
 	font-family: var(--font-monospace);
 	font-size: var(--font-ui-smaller);
-	margin-top: 8px;
-	width: 100%;
 }
 
 .aiko-diff-table td {
+	padding: 1px var(--size-2-3);
 	border: 0;
-	padding: 2px 6px;
 	vertical-align: top;
 }
 
 .aiko-diff-line-number {
-	color: var(--text-faint);
-	text-align: right;
-	user-select: none;
 	width: 3.5em;
+	text-align: right;
+	color: var(--text-faint);
+	user-select: none;
 }
 
 .aiko-diff-marker {
-	color: var(--text-muted);
-	text-align: center;
-	user-select: none;
 	width: 1.5em;
+	text-align: center;
+	color: var(--text-muted);
+	user-select: none;
 }
 
 .aiko-diff-text {
@@ -172,32 +459,15 @@
 	background: var(--background-primary);
 }
 
+/* ---- Activity log (history modal) ---- */
 .aiko-audit {
 	color: var(--text-muted);
 	font-size: var(--font-ui-smaller);
 	line-height: 1.45;
 }
 
-.aiko-health-list {
-	display: grid;
-	gap: 8px;
-	margin-bottom: 0;
-	padding-left: 18px;
-}
-
-.aiko-health-high strong {
-	color: var(--text-error);
-}
-
-.aiko-health-medium strong {
-	color: var(--text-warning);
-}
-
-.aiko-health-low strong {
-	color: var(--text-muted);
-}
-
+/* ---- Settings ---- */
 .aiko-settings-description {
+	margin-bottom: var(--size-4-4);
 	color: var(--text-muted);
-	margin-bottom: 18px;
 }
