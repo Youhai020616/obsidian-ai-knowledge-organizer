@@ -1,5 +1,6 @@
 import {
 	ItemView,
+	MarkdownRenderer,
 	MarkdownView,
 	Modal,
 	Notice,
@@ -555,9 +556,24 @@ export default class AiKnowledgeOrganizerPlugin extends Plugin {
 			// Active-note scope: surface the note you're looking at first so
 			// "this note" resolves to it instead of a blind vault search.
 			const contextCitations = await this.withActiveNoteContext(citations);
+			// Recent turns (excluding the question just appended) give the
+			// provider conversational memory.
+			const conversation = this.getActiveConversation();
+			const history = (conversation?.messages ?? [])
+				.filter(
+					(message) =>
+						(message.role === 'user' || message.role === 'assistant') &&
+						!!message.text,
+				)
+				.slice(-7, -1)
+				.map((message) => ({
+					role: message.role as 'user' | 'assistant',
+					text: (message.text ?? '').slice(0, 1000),
+				}));
 			const answer = await createProvider(this.settings).answer(
 				trimmed,
 				contextCitations,
+				history,
 			);
 			const askAnswer: AskAnswer = {
 				id: createId('ask'),
@@ -942,7 +958,8 @@ class OrganizerView extends ItemView {
 		wrap.createSpan({ cls: 'aiko-msg-avatar', text: '✦' });
 		const body = wrap.createDiv({ cls: 'aiko-msg-body' });
 		if (message.text) {
-			body.createEl('p', { text: message.text });
+			const textEl = body.createDiv({ cls: 'aiko-msg-text' });
+			void MarkdownRenderer.render(this.app, message.text, textEl, '', this);
 		}
 		if (message.citations && message.citations.length > 0) {
 			const cites = body.createDiv({ cls: 'aiko-citations' });

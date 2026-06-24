@@ -3,6 +3,7 @@ import {
 	AnalysisInput,
 	AnalysisResult,
 	CandidateNote,
+	ChatTurn,
 	Provider,
 	ProviderId,
 } from './types';
@@ -156,17 +157,19 @@ export class HeuristicProvider implements Provider {
 	}
 
 	async answer(question: string, candidates: CandidateNote[]): Promise<string> {
+		const modeNote =
+			'_Local mode: I search your vault and quote matches rather than writing an answer. Pick a model from the ⚡ menu below for synthesized replies._';
 		if (candidates.length === 0) {
-			return 'I could not find relevant notes in this vault for that question.';
+			return `I searched your vault but didn't find notes matching "${question}".\n\nTry different keywords, or set the scope to **Active note** to ask about the note you're viewing.\n\n${modeNote}`;
 		}
 		const lines = candidates
 			.slice(0, 5)
 			.map(
 				(candidate) =>
-					`- ${candidate.basename}: ${candidate.excerpt || 'No excerpt available.'}`,
+					`- **${candidate.basename}** — ${candidate.excerpt || 'No excerpt available.'}`,
 			)
 			.join('\n');
-		return `Local answer draft for: "${question}"\n\nThe most relevant notes are:\n${lines}\n\nSwitch to OpenAI, Anthropic, Gemini, DeepSeek, or Ollama in settings for synthesized answers.`;
+		return `Here are the most relevant notes for "${question}":\n\n${lines}\n\n${modeNote}`;
 	}
 }
 
@@ -205,19 +208,15 @@ export class OpenAIProvider implements Provider {
 		return normalizeAnalysis(JSON.parse(responseText) as Partial<AnalysisResult>);
 	}
 
-	async answer(question: string, candidates: CandidateNote[]): Promise<string> {
+	async answer(
+		question: string,
+		candidates: CandidateNote[],
+		history?: ChatTurn[],
+	): Promise<string> {
 		return this.createResponse({
 			instructions:
-				'Answer from the provided Obsidian notes only. Cite note basenames inline. If the notes do not contain enough evidence, say so clearly.',
-			input: [
-				`Question: ${question}`,
-				`Relevant notes:\n${candidates
-					.map(
-						(candidate) =>
-							`## ${candidate.basename}\nPath: ${candidate.path}\n${candidate.excerpt}`,
-					)
-					.join('\n\n')}`,
-			].join('\n\n'),
+				'Answer from the provided Obsidian notes only. Cite note basenames inline. If the notes do not contain enough evidence, say so clearly. Use the earlier conversation for context when relevant.',
+			input: buildAnswerPrompt(question, candidates, history),
 		});
 	}
 
@@ -276,11 +275,15 @@ export class AnthropicProvider implements Provider {
 		return normalizeAnalysis(JSON.parse(extractFirstJson(text)) as Partial<AnalysisResult>);
 	}
 
-	async answer(question: string, candidates: CandidateNote[]): Promise<string> {
+	async answer(
+		question: string,
+		candidates: CandidateNote[],
+		history?: ChatTurn[],
+	): Promise<string> {
 		return this.createMessage({
 			system:
-				'Answer from the provided Obsidian notes only. Cite note basenames inline. If the notes do not contain enough evidence, say so clearly.',
-			prompt: buildAnswerPrompt(question, candidates),
+				'Answer from the provided Obsidian notes only. Cite note basenames inline. If the notes do not contain enough evidence, say so clearly. Use the earlier conversation for context when relevant.',
+			prompt: buildAnswerPrompt(question, candidates, history),
 		});
 	}
 
@@ -334,8 +337,14 @@ export class GeminiProvider implements Provider {
 		return normalizeAnalysis(JSON.parse(extractFirstJson(text)) as Partial<AnalysisResult>);
 	}
 
-	async answer(question: string, candidates: CandidateNote[]): Promise<string> {
-		return this.generateContent(buildAnswerPrompt(question, candidates));
+	async answer(
+		question: string,
+		candidates: CandidateNote[],
+		history?: ChatTurn[],
+	): Promise<string> {
+		return this.generateContent(
+			buildAnswerPrompt(question, candidates, history),
+		);
 	}
 
 	private async generateContent(
@@ -392,11 +401,15 @@ export class DeepSeekProvider implements Provider {
 		return normalizeAnalysis(JSON.parse(extractFirstJson(text)) as Partial<AnalysisResult>);
 	}
 
-	async answer(question: string, candidates: CandidateNote[]): Promise<string> {
+	async answer(
+		question: string,
+		candidates: CandidateNote[],
+		history?: ChatTurn[],
+	): Promise<string> {
 		return this.createChatCompletion({
 			system:
-				'Answer from the provided Obsidian notes only. Cite note basenames inline. If the notes do not contain enough evidence, say so clearly.',
-			prompt: buildAnswerPrompt(question, candidates),
+				'Answer from the provided Obsidian notes only. Cite note basenames inline. If the notes do not contain enough evidence, say so clearly. Use the earlier conversation for context when relevant.',
+			prompt: buildAnswerPrompt(question, candidates, history),
 		});
 	}
 
@@ -481,17 +494,15 @@ export class OllamaProvider implements Provider {
 		return normalizeAnalysis(JSON.parse(extractFirstJson(text)) as Partial<AnalysisResult>);
 	}
 
-	async answer(question: string, candidates: CandidateNote[]): Promise<string> {
+	async answer(
+		question: string,
+		candidates: CandidateNote[],
+		history?: ChatTurn[],
+	): Promise<string> {
 		return this.generate(
 			[
 				'Answer from the provided Obsidian notes only. Cite note basenames.',
-				`Question: ${question}`,
-				`Relevant notes:\n${candidates
-					.map(
-						(candidate) =>
-							`## ${candidate.basename}\nPath: ${candidate.path}\n${candidate.excerpt}`,
-					)
-					.join('\n\n')}`,
+				buildAnswerPrompt(question, candidates, history),
 			].join('\n\n'),
 		);
 	}
@@ -620,16 +631,36 @@ function buildJsonAnalysisPrompt(input: AnalysisInput): string {
 	].join('\n\n');
 }
 
-function buildAnswerPrompt(question: string, candidates: CandidateNote[]): string {
-	return [
-		`Question: ${question}`,
+function formatHistory(history?: ChatTurn[]): string {
+	if (!history || history.length === 0) {
+		return '';
+	}
+	const lines = history.map(
+		(turn) => `${turn.role === 'user' ? 'User' : 'Assistant'}: ${turn.text}`,
+	);
+	return `Earlier in this conversation (for context):\n${lines.join('\n')}`;
+}
+
+function buildAnswerPrompt(
+	question: string,
+	candidates: CandidateNote[],
+	history?: ChatTurn[],
+): string {
+	const sections: string[] = [];
+	const conversation = formatHistory(history);
+	if (conversation) {
+		sections.push(conversation);
+	}
+	sections.push(`Question: ${question}`);
+	sections.push(
 		`Relevant notes:\n${candidates
 			.map(
 				(candidate) =>
 					`## ${candidate.basename}\nPath: ${candidate.path}\n${candidate.excerpt}`,
 			)
 			.join('\n\n')}`,
-	].join('\n\n');
+	);
+	return sections.join('\n\n');
 }
 
 function normalizeGeminiModelPath(model: string): string {

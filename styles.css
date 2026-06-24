@@ -113,6 +113,25 @@
 	overflow-wrap: anywhere;
 }
 
+.aiko-msg-text > :first-child {
+	margin-top: 0;
+}
+
+.aiko-msg-text > :last-child {
+	margin-bottom: 0;
+}
+
+.aiko-msg-text p {
+	margin: 0 0 var(--size-2-3);
+	overflow-wrap: anywhere;
+}
+
+.aiko-msg-text ul,
+.aiko-msg-text ol {
+	margin: var(--size-2-2) 0;
+	padding-left: var(--size-4-4);
+}
+
 .aiko-msg-system {
 	align-self: center;
 	font-size: var(--font-ui-smaller);

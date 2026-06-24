@@ -209,7 +209,16 @@ export interface HealthIssue {
 	relatedPaths?: string[];
 }
 
+export interface ChatTurn {
+	role: 'user' | 'assistant';
+	text: string;
+}
+
 export interface Provider {
 	analyze(input: AnalysisInput): Promise<AnalysisResult>;
-	answer(question: string, candidates: CandidateNote[]): Promise<string>;
+	answer(
+		question: string,
+		candidates: CandidateNote[],
+		history?: ChatTurn[],
+	): Promise<string>;
 }
