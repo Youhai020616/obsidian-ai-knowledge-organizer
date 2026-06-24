@@ -1,0 +1,203 @@
+.aiko-view {
+	padding: 18px;
+}
+
+.aiko-header,
+.aiko-proposal-head,
+.aiko-operation-row,
+.aiko-ask-row,
+.aiko-actions {
+	align-items: center;
+	display: flex;
+	gap: 10px;
+}
+
+.aiko-header,
+.aiko-proposal-head {
+	justify-content: space-between;
+}
+
+.aiko-header h2,
+.aiko-proposal h4 {
+	margin-bottom: 4px;
+	margin-top: 0;
+}
+
+.aiko-panel,
+.aiko-section,
+.aiko-proposal {
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 8px;
+	margin-top: 16px;
+	padding: 14px;
+}
+
+.aiko-panel,
+.aiko-proposal {
+	background: var(--background-secondary);
+}
+
+.aiko-muted {
+	color: var(--text-muted);
+	font-size: var(--font-ui-smaller);
+}
+
+.aiko-actions {
+	flex-wrap: wrap;
+	justify-content: flex-end;
+}
+
+.aiko-ask-row input {
+	flex: 1;
+	min-width: 180px;
+}
+
+.aiko-url-input {
+	box-sizing: border-box;
+	margin-top: 8px;
+	width: 100%;
+}
+
+.aiko-modal-actions {
+	margin-top: 14px;
+}
+
+.aiko-answer {
+	background: var(--background-primary);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 6px;
+	margin-top: 12px;
+	padding: 12px;
+}
+
+.aiko-citations {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+	margin-top: 10px;
+}
+
+.aiko-link-button {
+	font-size: var(--font-ui-smaller);
+}
+
+.aiko-proposal-pending {
+	border-color: var(--interactive-accent);
+}
+
+.aiko-proposal-applied {
+	border-color: var(--text-success);
+}
+
+.aiko-proposal-failed {
+	border-color: var(--text-error);
+}
+
+.aiko-error {
+	color: var(--text-error);
+	font-weight: 600;
+}
+
+.aiko-operation {
+	background: var(--background-primary);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 6px;
+	margin-top: 10px;
+	padding: 10px;
+}
+
+.aiko-operation-row {
+	align-items: flex-start;
+	flex-wrap: wrap;
+}
+
+.aiko-preview-grid {
+	display: grid;
+	gap: 12px;
+	grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+	margin-top: 8px;
+}
+
+.aiko-preview-grid pre {
+	background: var(--background-secondary);
+	border-radius: 6px;
+	max-height: 340px;
+	overflow: auto;
+	padding: 10px;
+	white-space: pre-wrap;
+}
+
+.aiko-diff-table {
+	border-collapse: collapse;
+	font-family: var(--font-monospace);
+	font-size: var(--font-ui-smaller);
+	margin-top: 8px;
+	width: 100%;
+}
+
+.aiko-diff-table td {
+	border: 0;
+	padding: 2px 6px;
+	vertical-align: top;
+}
+
+.aiko-diff-line-number {
+	color: var(--text-faint);
+	text-align: right;
+	user-select: none;
+	width: 3.5em;
+}
+
+.aiko-diff-marker {
+	color: var(--text-muted);
+	text-align: center;
+	user-select: none;
+	width: 1.5em;
+}
+
+.aiko-diff-text {
+	white-space: pre-wrap;
+	word-break: break-word;
+}
+
+.aiko-diff-add {
+	background: rgba(var(--color-green-rgb), 0.12);
+}
+
+.aiko-diff-remove {
+	background: rgba(var(--color-red-rgb), 0.12);
+}
+
+.aiko-diff-same {
+	background: var(--background-primary);
+}
+
+.aiko-audit {
+	color: var(--text-muted);
+	font-size: var(--font-ui-smaller);
+	line-height: 1.45;
+}
+
+.aiko-health-list {
+	display: grid;
+	gap: 8px;
+	margin-bottom: 0;
+	padding-left: 18px;
+}
+
+.aiko-health-high strong {
+	color: var(--text-error);
+}
+
+.aiko-health-medium strong {
+	color: var(--text-warning);
+}
+
+.aiko-health-low strong {
+	color: var(--text-muted);
+}
+
+.aiko-settings-description {
+	color: var(--text-muted);
+	margin-bottom: 18px;
+}

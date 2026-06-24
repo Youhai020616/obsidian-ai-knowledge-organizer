@@ -1,0 +1,60 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version: [20.x, 22.x, 24.x]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Test
+        run: npm test
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Docs check
+        run: npm run docs:check
+
+      - name: Build
+        run: npm run build
+
+      - name: Release file check
+        run: npm run release:check
+
+      - name: Package release files
+        run: npm run package:release
+
+      - name: Generate release notes
+        run: npm run release:notes
+
+      - name: Simulated install check
+        run: npm run e2e:install
+
+      - name: Generate beta smoke-test vault
+        run: npm run beta:vault
+
+      - name: Generate publish report
+        run: npm run publish:report -- --repo "${{ github.repository }}"
+
+      - name: Community submission preflight
+        run: npm run community:preflight
+
+      - name: Audit
+        run: npm audit --audit-level=moderate

@@ -1,0 +1,62 @@
+name: Release Obsidian plugin
+
+on:
+    push:
+        tags:
+            - '*'
+
+jobs:
+    build:
+        runs-on: ubuntu-latest
+        permissions:
+            contents: write
+        steps:
+            - uses: actions/checkout@v4
+
+            - name: Use Node.js
+              uses: actions/setup-node@v4
+              with:
+                  node-version: 22
+                  cache: 'npm'
+
+            - name: Install
+              run: npm ci
+
+            - name: Verify
+              run: |
+                  npm test
+                  npm run lint
+                  npm run docs:check
+                  npm run build
+                  npm run release:check
+                  npm run package:release
+                  npm run release:notes
+                  npm run e2e:install
+                  npm run beta:vault
+                  npm run publish:report -- --repo "${GITHUB_REPOSITORY}"
+                  npm run community:preflight
+                  npm audit --audit-level=moderate
+
+            - name: Verify tag matches manifest version
+              run: |
+                  tag="${GITHUB_REF#refs/tags/}"
+                  version="$(node -p "JSON.parse(require('fs').readFileSync('manifest.json', 'utf8')).version")"
+                  if [ "$tag" != "$version" ]; then
+                    echo "Release tag $tag must match manifest version $version"
+                    exit 1
+                  fi
+
+            - name: Create release
+              env:
+                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+              run: |
+                  tag="${GITHUB_REF#refs/tags/}"
+                  release_dir="dist/release/ai-knowledge-organizer-$tag"
+
+                  gh release create "$tag" \
+                    --title="$tag" \
+                    --draft \
+                    --notes-file "$release_dir/RELEASE_NOTES.md" \
+                    "$release_dir/main.js" \
+                    "$release_dir/manifest.json" \
+                    "$release_dir/styles.css"

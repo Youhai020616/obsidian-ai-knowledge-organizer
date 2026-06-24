@@ -1,0 +1,51 @@
+name: Feature request
+description: Suggest an improvement that preserves review-first vault safety.
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Feature requests should preserve the safety model: AI proposes, the user reviews, updates are backed up, and rollback remains available where possible.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or workflow
+      description: What user workflow should this improve?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+      description: Describe the expected interaction and review step.
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Review queue
+        - Providers
+        - Retrieval / Ask Vault
+        - Vault audit
+        - Governance proposals
+        - Imports
+        - Backups / rollback
+        - Settings
+        - Documentation
+        - Other
+    validations:
+      required: true
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Safety constraints
+      options:
+        - label: This feature keeps AI-generated writes behind user review.
+          required: true
+        - label: This feature does not require sending note content to a remote service unless the user opts in.
+          required: true
+        - label: This feature preserves backups or rollback for write operations where possible.
+          required: true
