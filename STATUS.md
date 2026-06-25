@@ -54,7 +54,7 @@ Last local verification passed:
 - `npm run verify:all -- --repo Youhai020616/obsidian-ai-knowledge-organizer`
 - `npm run community:pr-body -- --repo Youhai020616/obsidian-ai-knowledge-organizer --platform macOS`
 
-Current automated test coverage: 22 tests across provider selection/fallback, provider parsing, local heuristic analysis, proposal construction, vault health, diffs, governance proposals, retrieval, import extraction, PDF extraction, and vault apply/backup/rollback behavior.
+Current automated test coverage: 24 tests across provider selection/fallback, provider parsing, local heuristic analysis, proposal construction, vault health, diffs, governance proposals, retrieval, import extraction, PDF extraction, and vault apply/backup/rollback behavior.
 
 ## Remaining Toward Full Version
 

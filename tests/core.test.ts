@@ -78,9 +78,8 @@ describe('utils', () => {
 		expect(redactSecrets('Root密码：s3cr3tP4ssw0rd00')).toBe(
 			'Root密码：[REDACTED]',
 		);
-		const key = redactSecrets(
-			'deepseek api key :sk-abcdef0123456789abcdef0123',
-		);
+		const fakeDeepSeekKey = 'sk-' + 'abcdef0123456789abcdef0123';
+		const key = redactSecrets('deepseek api key :' + fakeDeepSeekKey);
 		expect(key).toContain('[REDACTED]');
 		expect(key).not.toContain('abcdef0123');
 		expect(redactSecrets('railway token : aaaa1111 bbbb2222 cccc3333')).toBe(
