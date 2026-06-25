@@ -12,8 +12,9 @@ This checklist tracks review-sensitive areas before public submission.
 ## Data access and privacy
 
 - Default provider is `Local heuristic`; it does not send note content to remote services.
-- OpenAI, Anthropic, Gemini, and Ollama are opt-in settings.
-- Remote providers receive only the source note and retrieved candidate excerpts for the user-triggered operation.
+- OpenAI, Anthropic, Gemini, DeepSeek, and non-local Ollama endpoints are opt-in settings.
+- Remote providers receive only user-triggered context: the source note or Ask Vault question, retrieved candidate excerpts, active-note excerpt when that scope is enabled, and recent redacted conversation turns needed for the current request.
+- Secret-like values are best-effort redacted before provider requests and before chat messages are persisted.
 - URL import only fetches a URL entered by the user.
 - PDF extraction runs locally and does not perform OCR.
 

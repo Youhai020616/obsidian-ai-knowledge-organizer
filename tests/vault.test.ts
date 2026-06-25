@@ -24,7 +24,10 @@ describe('vault writes', () => {
 		);
 
 		expect(audit.action).toBe('apply');
-		expect(audit.paths).toEqual(['Inbox/source.md', 'AI Notes/new-topic.md']);
+		expect(audit.paths).toEqual([
+			'Inbox/source.md',
+			'AI Notes/new-topic.md',
+		]);
 		expect(await app.vault.readPath('Inbox/source.md')).toContain(
 			'Updated content.',
 		);
@@ -48,11 +51,96 @@ describe('vault writes', () => {
 		const rollback = await rollbackProposal(app, proposal);
 
 		expect(rollback.action).toBe('rollback');
-		expect(rollback.paths).toEqual(['AI Notes/new-topic.md', 'Inbox/source.md']);
+		expect(rollback.paths).toEqual([
+			'AI Notes/new-topic.md',
+			'Inbox/source.md',
+		]);
 		expect(await app.vault.readPath('Inbox/source.md')).toBe(
 			'# Source\n\nOriginal content.',
 		);
 		expect(await app.vault.exists('AI Notes/new-topic.md')).toBe(false);
+	});
+
+	it('refuses to delete created files changed after apply', async () => {
+		const app = createMemoryApp({
+			'Inbox/source.md': '# Source\n\nOriginal content.',
+		});
+		const proposal = createProposal();
+
+		await applyProposalToVault(app, proposal, '.ai-organizer/backups');
+		const created = app.vault.getAbstractFileByPath(
+			'AI Notes/new-topic.md',
+		);
+		if (!(created instanceof TFile)) {
+			throw new Error('Expected created note.');
+		}
+		await app.vault.modify(created, '# New Topic\n\nUser edit.');
+
+		await expect(rollbackProposal(app, proposal)).rejects.toThrow(
+			/Refusing to delete/u,
+		);
+		expect(await app.vault.readPath('AI Notes/new-topic.md')).toContain(
+			'User edit',
+		);
+	});
+
+	it('refuses to overwrite updated files changed after apply', async () => {
+		const app = createMemoryApp({
+			'Inbox/source.md': '# Source\n\nOriginal content.',
+		});
+		const proposal = createProposal();
+
+		await applyProposalToVault(app, proposal, '.ai-organizer/backups');
+		const updated = app.vault.getAbstractFileByPath('Inbox/source.md');
+		if (!(updated instanceof TFile)) {
+			throw new Error('Expected updated note.');
+		}
+		await app.vault.modify(updated, '# Source\n\nUser edit.');
+
+		await expect(rollbackProposal(app, proposal)).rejects.toThrow(
+			/Refusing to roll back/u,
+		);
+		expect(await app.vault.readPath('Inbox/source.md')).toContain(
+			'User edit',
+		);
+		expect(await app.vault.exists('AI Notes/new-topic.md')).toBe(true);
+	});
+
+	it('refuses rollback when an updated target file is missing', async () => {
+		const app = createMemoryApp({
+			'Inbox/source.md': '# Source\n\nOriginal content.',
+		});
+		const proposal = createProposal();
+
+		await applyProposalToVault(app, proposal, '.ai-organizer/backups');
+		await app.vault.adapter.remove('Inbox/source.md');
+
+		await expect(rollbackProposal(app, proposal)).rejects.toThrow(
+			/target file is missing/u,
+		);
+		expect(await app.vault.exists('AI Notes/new-topic.md')).toBe(true);
+	});
+
+	it('refuses rollback when an update backup file is missing', async () => {
+		const app = createMemoryApp({
+			'Inbox/source.md': '# Source\n\nOriginal content.',
+		});
+		const proposal = createProposal();
+
+		await applyProposalToVault(app, proposal, '.ai-organizer/backups');
+		const updateOperation = proposal.operations[0];
+		if (updateOperation?.type !== 'update' || !updateOperation.backupPath) {
+			throw new Error('Expected update backup path.');
+		}
+		await app.vault.adapter.remove(updateOperation.backupPath);
+
+		await expect(rollbackProposal(app, proposal)).rejects.toThrow(
+			/backup file is missing/u,
+		);
+		expect(await app.vault.readPath('Inbox/source.md')).toContain(
+			'Updated content',
+		);
+		expect(await app.vault.exists('AI Notes/new-topic.md')).toBe(true);
 	});
 
 	it('creates nested folders idempotently and reports existing paths', async () => {

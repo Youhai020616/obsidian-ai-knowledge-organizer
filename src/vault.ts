@@ -17,7 +17,10 @@ export async function getActiveMarkdownFile(app: App): Promise<TFile | null> {
 	return file;
 }
 
-export async function snapshotFile(app: App, file: TFile): Promise<NoteSnapshot> {
+export async function snapshotFile(
+	app: App,
+	file: TFile,
+): Promise<NoteSnapshot> {
 	return {
 		path: file.path,
 		basename: file.basename,
@@ -36,7 +39,9 @@ export async function snapshotPath(
 	return snapshotFile(app, file);
 }
 
-export async function getAllMarkdownSnapshots(app: App): Promise<NoteSnapshot[]> {
+export async function getAllMarkdownSnapshots(
+	app: App,
+): Promise<NoteSnapshot[]> {
 	const files = app.vault.getMarkdownFiles();
 	return Promise.all(files.map((file) => snapshotFile(app, file)));
 }
@@ -55,14 +60,24 @@ export async function findCandidates(
 	return rankCandidates(query, notes, { excludePath, limit });
 }
 
-export async function getInboxFiles(app: App, inboxFolder: string): Promise<TFile[]> {
+export async function getInboxFiles(
+	app: App,
+	inboxFolder: string,
+): Promise<TFile[]> {
 	const prefix = normalizePath(inboxFolder).replace(/\/$/u, '');
 	return app.vault
 		.getMarkdownFiles()
-		.filter((file) => file.path === `${prefix}.md` || file.path.startsWith(`${prefix}/`));
+		.filter(
+			(file) =>
+				file.path === `${prefix}.md` ||
+				file.path.startsWith(`${prefix}/`),
+		);
 }
 
-export async function ensureFolder(app: App, folderPath: string): Promise<void> {
+export async function ensureFolder(
+	app: App,
+	folderPath: string,
+): Promise<void> {
 	const normalized = normalizePath(folderPath);
 	if (!normalized || normalized === '/') {
 		return;
@@ -112,22 +127,70 @@ export async function rollbackProposal(
 	const touchedPaths: string[] = [];
 
 	for (const operation of operations) {
+		const normalizedPath = normalizePath(operation.path);
+		const target = app.vault.getAbstractFileByPath(normalizedPath);
 		if (operation.type === 'create') {
-			if (await app.vault.adapter.exists(operation.path)) {
-				await app.vault.adapter.remove(operation.path);
+			if (target instanceof TFile) {
+				const current = await app.vault.read(target);
+				if (current !== operation.after) {
+					throw new Error(
+						`Refusing to delete ${normalizedPath}; the file changed after this proposal was applied.`,
+					);
+				}
 			}
-			touchedPaths.push(operation.path);
 			continue;
 		}
 		if (!operation.backupPath) {
+			throw new Error(
+				`Cannot roll back ${normalizedPath}; backup path is missing.`,
+			);
+		}
+		if (!(target instanceof TFile)) {
+			throw new Error(
+				`Cannot roll back ${normalizedPath}; target file is missing.`,
+			);
+		}
+		const backupPath = normalizePath(operation.backupPath);
+		const backup = app.vault.getAbstractFileByPath(backupPath);
+		if (!(backup instanceof TFile)) {
+			throw new Error(
+				`Cannot roll back ${normalizedPath}; backup file is missing.`,
+			);
+		}
+		const current = await app.vault.read(target);
+		if (current !== operation.after) {
+			throw new Error(
+				`Refusing to roll back ${normalizedPath}; the file changed after this proposal was applied.`,
+			);
+		}
+	}
+
+	for (const operation of operations) {
+		const normalizedPath = normalizePath(operation.path);
+		if (operation.type === 'create') {
+			const file = app.vault.getAbstractFileByPath(normalizedPath);
+			if (file instanceof TFile) {
+				await app.vault.adapter.remove(normalizedPath);
+			}
+			touchedPaths.push(normalizedPath);
 			continue;
 		}
-		const backup = app.vault.getAbstractFileByPath(operation.backupPath);
-		const target = app.vault.getAbstractFileByPath(operation.path);
-		if (backup instanceof TFile && target instanceof TFile) {
-			await app.vault.modify(target, await app.vault.read(backup));
-			touchedPaths.push(operation.path);
+		if (!operation.backupPath) {
+			throw new Error(
+				`Cannot roll back ${normalizedPath}; backup path is missing.`,
+			);
 		}
+		const backup = app.vault.getAbstractFileByPath(
+			normalizePath(operation.backupPath),
+		);
+		const target = app.vault.getAbstractFileByPath(normalizedPath);
+		if (!(backup instanceof TFile) || !(target instanceof TFile)) {
+			throw new Error(
+				`Cannot roll back ${normalizedPath}; rollback preflight no longer holds.`,
+			);
+		}
+		await app.vault.modify(target, await app.vault.read(backup));
+		touchedPaths.push(normalizedPath);
 	}
 
 	return {
@@ -150,7 +213,9 @@ async function applyOperation(
 
 	if (operation.type === 'create') {
 		if (await app.vault.adapter.exists(normalizedPath)) {
-			throw new Error(`Cannot create ${normalizedPath}; file already exists.`);
+			throw new Error(
+				`Cannot create ${normalizedPath}; file already exists.`,
+			);
 		}
 		await app.vault.create(normalizedPath, operation.after);
 		return;

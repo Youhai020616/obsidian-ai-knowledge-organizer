@@ -58,7 +58,7 @@ export interface ChatMessage {
 	role: ChatMessageRole;
 	at: string;
 	text?: string;
-	citations?: CandidateNote[];
+	citations?: CitationReference[];
 	proposalIds?: string[];
 	kind?: 'progress' | 'error';
 }
@@ -68,6 +68,7 @@ export interface Conversation {
 	title: string;
 	createdAt: string;
 	updatedAt: string;
+	providerOverride?: ProviderId;
 	messages: ChatMessage[];
 }
 
@@ -82,6 +83,11 @@ export interface CandidateNote {
 	basename: string;
 	score: number;
 	excerpt: string;
+}
+
+export interface CitationReference {
+	path: string;
+	basename: string;
 }
 
 export interface SearchIndex {

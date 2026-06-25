@@ -21,6 +21,7 @@ import {
 	AskAnswer,
 	AuditEntry,
 	CandidateNote,
+	CitationReference,
 	ChangeProposal,
 	ChatMessage,
 	Conversation,
@@ -82,7 +83,8 @@ export default class AiKnowledgeOrganizerPlugin extends Plugin {
 			id: 'analyze-active-note',
 			name: 'Analyze active note',
 			checkCallback: (checking) => {
-				const view = this.app.workspace.getActiveViewOfType(MarkdownView);
+				const view =
+					this.app.workspace.getActiveViewOfType(MarkdownView);
 				if (!view) {
 					return false;
 				}
@@ -167,6 +169,8 @@ export default class AiKnowledgeOrganizerPlugin extends Plugin {
 
 	async loadPluginData(): Promise<void> {
 		const loaded = (await this.loadData()) as Partial<OrganizerData> | null;
+		const rawConversations = loaded?.state?.conversations ?? [];
+		const sanitizedConversations = sanitizeConversations(rawConversations);
 		this.settings = {
 			...DEFAULT_SETTINGS,
 			...(loaded?.settings ?? {}),
@@ -176,9 +180,15 @@ export default class AiKnowledgeOrganizerPlugin extends Plugin {
 			...(loaded?.state ?? {}),
 			proposals: loaded?.state?.proposals ?? [],
 			auditLog: loaded?.state?.auditLog ?? [],
-			conversations: loaded?.state?.conversations ?? [],
+			conversations: sanitizedConversations,
 		};
 		this.migrateOrphanProposals();
+		if (
+			JSON.stringify(rawConversations) !==
+			JSON.stringify(sanitizedConversations)
+		) {
+			await this.savePluginData();
+		}
 	}
 
 	/**
@@ -232,7 +242,10 @@ export default class AiKnowledgeOrganizerPlugin extends Plugin {
 		try {
 			await ensureFolder(this.app, this.settings.inboxFolder);
 		} catch (error) {
-			await this.captureError(error, 'Inbox folder initialization failed');
+			await this.captureError(
+				error,
+				'Inbox folder initialization failed',
+			);
 		}
 	}
 
@@ -264,9 +277,25 @@ export default class AiKnowledgeOrganizerPlugin extends Plugin {
 	// Messages reference proposals by id; the proposal engine stays untouched.
 
 	getActiveConversation(): Conversation | undefined {
+		return this.getConversation(this.state.activeConversationId);
+	}
+
+	getConversation(conversationId?: string): Conversation | undefined {
+		if (!conversationId) return undefined;
 		return this.state.conversations.find(
-			(conversation) => conversation.id === this.state.activeConversationId,
+			(conversation) => conversation.id === conversationId,
 		);
+	}
+
+	getEffectiveSettings(
+		conversationId = this.state.activeConversationId,
+	): OrganizerSettings {
+		const providerOverride =
+			this.getConversation(conversationId)?.providerOverride;
+		return {
+			...this.settings,
+			...(providerOverride ? { provider: providerOverride } : {}),
+		};
 	}
 
 	private createConversation(): Conversation {
@@ -289,10 +318,76 @@ export default class AiKnowledgeOrganizerPlugin extends Plugin {
 	async startNewConversation(): Promise<void> {
 		this.createConversation();
 		await this.savePluginData();
+		this.view?.render();
 	}
 
-	private appendMessage(message: Omit<ChatMessage, 'id' | 'at'>): ChatMessage {
-		const conversation = this.ensureActiveConversation();
+	async activateConversation(conversationId: string): Promise<void> {
+		if (!this.getConversation(conversationId)) {
+			new Notice('Conversation was not found.');
+			return;
+		}
+		this.state.activeConversationId = conversationId;
+		await this.savePluginData();
+		await this.activateView();
+		this.view?.render();
+	}
+
+	async openFirstPendingProposal(): Promise<void> {
+		const proposal = this.state.proposals.find(
+			(candidate) => candidate.status === 'pending',
+		);
+		if (!proposal) {
+			new Notice('No pending proposals.');
+			return;
+		}
+		await this.openProposal(proposal.id);
+	}
+
+	async openProposal(proposalId: string): Promise<void> {
+		const proposal = this.findProposal(proposalId);
+		if (!proposal) {
+			new Notice('Proposal was not found.');
+			return;
+		}
+		const conversation = this.ensureConversationForProposal(proposal);
+		this.state.activeConversationId = conversation.id;
+		await this.savePluginData();
+		await this.activateView();
+		this.view?.render();
+		window.setTimeout(() => this.view?.scrollToProposal(proposalId), 0);
+	}
+
+	private findConversationForProposal(
+		proposalId: string,
+	): Conversation | undefined {
+		return this.state.conversations.find((conversation) =>
+			conversation.messages.some((message) =>
+				(message.proposalIds ?? []).includes(proposalId),
+			),
+		);
+	}
+
+	private ensureConversationForProposal(
+		proposal: ChangeProposal,
+	): Conversation {
+		const existing = this.findConversationForProposal(proposal.id);
+		if (existing) return existing;
+		const conversation = this.createConversation();
+		conversation.title = proposal.title.slice(0, 48) || 'Pending proposal';
+		this.appendMessageToConversation(conversation.id, {
+			role: 'assistant',
+			text: `Review proposal: ${proposal.title}`,
+			proposalIds: [proposal.id],
+		});
+		return conversation;
+	}
+
+	private appendMessageToConversation(
+		conversationId: string,
+		message: Omit<ChatMessage, 'id' | 'at'>,
+	): ChatMessage | undefined {
+		const conversation = this.getConversation(conversationId);
+		if (!conversation) return undefined;
 		const full: ChatMessage = {
 			id: createId('msg'),
 			at: nowIso(),
@@ -310,16 +405,48 @@ export default class AiKnowledgeOrganizerPlugin extends Plugin {
 		return full;
 	}
 
-	private appendUserMessage(text: string): void {
-		this.appendMessage({ role: 'user', text });
+	private appendMessage(
+		message: Omit<ChatMessage, 'id' | 'at'>,
+	): ChatMessage {
+		return this.appendMessageToConversation(
+			this.ensureActiveConversation().id,
+			message,
+		) as ChatMessage;
+	}
+
+	private appendUserMessage(text: string): Conversation {
+		const conversation = this.ensureActiveConversation();
+		this.appendMessageToConversation(conversation.id, {
+			role: 'user',
+			text: redactSecrets(text),
+		});
+		return conversation;
+	}
+
+	private appendAssistantMessageToConversation(
+		conversationId: string,
+		message: {
+			text?: string;
+			citations?: CitationReference[];
+			proposalIds?: string[];
+		},
+	): void {
+		this.appendMessageToConversation(conversationId, {
+			role: 'assistant',
+			...message,
+			text: message.text ? redactSecrets(message.text) : undefined,
+		});
 	}
 
 	private appendAssistantMessage(message: {
 		text?: string;
-		citations?: CandidateNote[];
+		citations?: CitationReference[];
 		proposalIds?: string[];
 	}): void {
-		this.appendMessage({ role: 'assistant', ...message });
+		this.appendAssistantMessageToConversation(
+			this.ensureActiveConversation().id,
+			message,
+		);
 	}
 
 	async analyzeActiveNote(): Promise<void> {
@@ -328,9 +455,13 @@ export default class AiKnowledgeOrganizerPlugin extends Plugin {
 			new Notice('Open a Markdown note before analyzing.');
 			return;
 		}
-		this.appendUserMessage(`Analyze active note: ${file.basename}`);
-		const proposal = await this.analyzeFile(file);
-		this.appendAssistantMessage(
+		const conversation = this.appendUserMessage(
+			`Analyze active note: ${file.basename}`,
+		);
+		const providerSettings = this.getEffectiveSettings(conversation.id);
+		const proposal = await this.analyzeFile(file, providerSettings);
+		this.appendAssistantMessageToConversation(
+			conversation.id,
 			proposal
 				? {
 						text: `Created an organization proposal for ${file.basename}. Review it below.`,
@@ -342,7 +473,10 @@ export default class AiKnowledgeOrganizerPlugin extends Plugin {
 		await this.activateView();
 	}
 
-	async analyzeFile(file: TFile): Promise<ChangeProposal | null> {
+	async analyzeFile(
+		file: TFile,
+		providerSettings: OrganizerSettings,
+	): Promise<ChangeProposal | null> {
 		try {
 			new Notice(`Analyzing ${file.basename}...`);
 			const source = await snapshotFile(this.app, file);
@@ -350,9 +484,9 @@ export default class AiKnowledgeOrganizerPlugin extends Plugin {
 				this.app,
 				`${source.basename}\n${source.content}`,
 				source.path,
-				this.settings.askSearchLimit,
+				providerSettings.askSearchLimit,
 			);
-			const provider = createProvider(this.settings);
+			const provider = createProvider(providerSettings);
 			// Redact secrets in the copy sent to the provider; the proposal is
 			// still built from the original source so diffs stay accurate.
 			const analysis = await provider.analyze({
@@ -361,7 +495,7 @@ export default class AiKnowledgeOrganizerPlugin extends Plugin {
 					...candidate,
 					excerpt: redactSecrets(candidate.excerpt),
 				})),
-				settings: this.settings,
+				settings: providerSettings,
 			});
 			const proposal = buildProposal(
 				source,
@@ -373,7 +507,9 @@ export default class AiKnowledgeOrganizerPlugin extends Plugin {
 				action: 'analyze',
 				message: `Created proposal for ${source.path}.`,
 				proposalId: proposal.id,
-				paths: selectedOperations(proposal).map((operation) => operation.path),
+				paths: selectedOperations(proposal).map(
+					(operation) => operation.path,
+				),
 			});
 			await this.savePluginData();
 			await this.activateView();
@@ -387,11 +523,15 @@ export default class AiKnowledgeOrganizerPlugin extends Plugin {
 
 	async scanInbox(): Promise<void> {
 		try {
-			this.appendUserMessage('Organize my inbox');
+			const conversation = this.appendUserMessage('Organize my inbox');
+			const providerSettings = this.getEffectiveSettings(conversation.id);
 			await ensureFolder(this.app, this.settings.inboxFolder);
-			const files = await getInboxFiles(this.app, this.settings.inboxFolder);
+			const files = await getInboxFiles(
+				this.app,
+				this.settings.inboxFolder,
+			);
 			if (files.length === 0) {
-				this.appendAssistantMessage({
+				this.appendAssistantMessageToConversation(conversation.id, {
 					text: `No Markdown files found in ${this.settings.inboxFolder}.`,
 				});
 				await this.savePluginData();
@@ -399,12 +539,12 @@ export default class AiKnowledgeOrganizerPlugin extends Plugin {
 			}
 			const createdIds: string[] = [];
 			for (const file of files) {
-				const proposal = await this.analyzeFile(file);
+				const proposal = await this.analyzeFile(file, providerSettings);
 				if (proposal) {
 					createdIds.push(proposal.id);
 				}
 			}
-			this.appendAssistantMessage({
+			this.appendAssistantMessageToConversation(conversation.id, {
 				text: `Scanned ${files.length} note(s) and created ${createdIds.length} proposal(s). Review each one below.`,
 				proposalIds: createdIds,
 			});
@@ -421,7 +561,7 @@ export default class AiKnowledgeOrganizerPlugin extends Plugin {
 
 	async importUrlToInbox(url: string): Promise<void> {
 		try {
-			this.appendUserMessage(`Import URL: ${url}`);
+			const conversation = this.appendUserMessage(`Import URL: ${url}`);
 			new Notice('Importing URL...');
 			const page = await importUrlAsMarkdown(url);
 			await ensureFolder(this.app, this.settings.inboxFolder);
@@ -431,7 +571,7 @@ export default class AiKnowledgeOrganizerPlugin extends Plugin {
 				existingPaths,
 			);
 			await this.app.vault.create(path, page.content);
-			this.appendAssistantMessage({
+			this.appendAssistantMessageToConversation(conversation.id, {
 				text: `Imported into ${path}. Run "Organize my inbox" to generate proposals.`,
 			});
 			this.addAudit({
@@ -452,15 +592,22 @@ export default class AiKnowledgeOrganizerPlugin extends Plugin {
 				new Notice('Choose at least one file.');
 				return;
 			}
-			this.appendUserMessage(`Import ${files.length} file(s)`);
+			const conversation = this.appendUserMessage(
+				`Import ${files.length} file(s)`,
+			);
 			await ensureFolder(this.app, this.settings.inboxFolder);
-			await ensureFolder(this.app, `${this.settings.inboxFolder}/attachments`);
+			await ensureFolder(
+				this.app,
+				`${this.settings.inboxFolder}/attachments`,
+			);
 			const existingPaths = await getExistingPaths(this.app);
 			const importedPaths: string[] = [];
 			for (const file of Array.from(files)) {
-				importedPaths.push(...(await this.importOneFile(file, existingPaths)));
+				importedPaths.push(
+					...(await this.importOneFile(file, existingPaths)),
+				);
 			}
-			this.appendAssistantMessage({
+			this.appendAssistantMessageToConversation(conversation.id, {
 				text: `Imported ${importedPaths.length} item(s) into the inbox. Run "Organize my inbox" to generate proposals.`,
 			});
 			this.addAudit({
@@ -494,7 +641,11 @@ export default class AiKnowledgeOrganizerPlugin extends Plugin {
 		} catch (error) {
 			proposal.status = 'failed';
 			proposal.error = stringifyError(error);
-			await this.captureError(error, `Apply failed for ${proposal.title}`, proposal.id);
+			await this.captureError(
+				error,
+				`Apply failed for ${proposal.title}`,
+				proposal.id,
+			);
 		}
 	}
 
@@ -527,7 +678,11 @@ export default class AiKnowledgeOrganizerPlugin extends Plugin {
 			await this.savePluginData();
 			new Notice('Rollback complete.');
 		} catch (error) {
-			await this.captureError(error, `Rollback failed for ${proposal.title}`, proposal.id);
+			await this.captureError(
+				error,
+				`Rollback failed for ${proposal.title}`,
+				proposal.id,
+			);
 		}
 	}
 
@@ -537,16 +692,21 @@ export default class AiKnowledgeOrganizerPlugin extends Plugin {
 			return;
 		}
 		try {
-			this.appendUserMessage(trimmed);
+			const conversation = this.appendUserMessage(trimmed);
+			const providerSettings = this.getEffectiveSettings(conversation.id);
+			const activeScopeFile =
+				providerSettings.askScope === 'active'
+					? this.app.workspace.getActiveFile()
+					: null;
 			const rawCitations = this.state.searchIndex
 				? rankIndexedCandidates(trimmed, this.state.searchIndex, {
-						limit: this.settings.askSearchLimit,
+						limit: providerSettings.askSearchLimit,
 					})
 				: await findCandidates(
 						this.app,
 						trimmed,
 						undefined,
-						this.settings.askSearchLimit,
+						providerSettings.askSearchLimit,
 					);
 			// Redact secrets before content reaches a provider or the UI.
 			const citations = rawCitations.map((candidate) => ({
@@ -555,37 +715,42 @@ export default class AiKnowledgeOrganizerPlugin extends Plugin {
 			}));
 			// Active-note scope: surface the note you're looking at first so
 			// "this note" resolves to it instead of a blind vault search.
-			const contextCitations = await this.withActiveNoteContext(citations);
+			const contextCitations = await this.withActiveNoteContext(
+				citations,
+				providerSettings,
+				activeScopeFile,
+			);
 			// Recent turns (excluding the question just appended) give the
-			// provider conversational memory.
-			const conversation = this.getActiveConversation();
-			const history = (conversation?.messages ?? [])
+			// provider conversational memory. Redact again at the egress boundary.
+			const history = conversation.messages
 				.filter(
 					(message) =>
-						(message.role === 'user' || message.role === 'assistant') &&
+						(message.role === 'user' ||
+							message.role === 'assistant') &&
 						!!message.text,
 				)
 				.slice(-7, -1)
 				.map((message) => ({
 					role: message.role as 'user' | 'assistant',
-					text: (message.text ?? '').slice(0, 1000),
+					text: redactSecrets((message.text ?? '').slice(0, 1000)),
 				}));
-			const answer = await createProvider(this.settings).answer(
-				trimmed,
+			const safeQuestion = redactSecrets(trimmed);
+			const answer = await createProvider(providerSettings).answer(
+				safeQuestion,
 				contextCitations,
 				history,
 			);
 			const askAnswer: AskAnswer = {
 				id: createId('ask'),
-				question: trimmed,
-				answer,
+				question: safeQuestion,
+				answer: redactSecrets(answer),
 				citations: contextCitations,
 				createdAt: nowIso(),
 			};
 			this.state.lastAsk = askAnswer;
-			this.appendAssistantMessage({
+			this.appendAssistantMessageToConversation(conversation.id, {
 				text: answer,
-				citations: contextCitations,
+				citations: toCitationReferences(contextCitations),
 			});
 			this.addAudit({
 				action: 'ask',
@@ -600,36 +765,38 @@ export default class AiKnowledgeOrganizerPlugin extends Plugin {
 
 	private async withActiveNoteContext(
 		citations: CandidateNote[],
+		settings: OrganizerSettings,
+		activeFile: TFile | null,
 	): Promise<CandidateNote[]> {
-		if (this.settings.askScope !== 'active') {
+		if (settings.askScope !== 'active') {
 			return citations;
 		}
-		const file = this.app.workspace.getActiveFile();
-		if (!file || file.extension !== 'md') {
+		if (!activeFile || activeFile.extension !== 'md') {
 			return citations;
 		}
-		const snapshot = await snapshotFile(this.app, file);
+		const snapshot = await snapshotFile(this.app, activeFile);
+		const maxContextChars = Math.max(1000, settings.maxContextChars);
 		const activeCandidate: CandidateNote = {
 			path: snapshot.path,
 			basename: snapshot.basename,
 			score: Number.MAX_SAFE_INTEGER,
-			excerpt: redactSecrets(snapshot.content.slice(0, 4000)),
+			excerpt: redactSecrets(snapshot.content.slice(0, maxContextChars)),
 		};
 		const rest = citations.filter(
 			(candidate) => candidate.path !== snapshot.path,
 		);
 		return [activeCandidate, ...rest].slice(
 			0,
-			Math.max(this.settings.askSearchLimit, 1),
+			Math.max(settings.askSearchLimit, 1),
 		);
 	}
 
 	async rebuildSearchIndex(): Promise<void> {
 		try {
-			this.appendUserMessage('Rebuild search index');
+			const conversation = this.appendUserMessage('Rebuild search index');
 			const notes = await getAllMarkdownSnapshots(this.app);
 			this.state.searchIndex = buildSearchIndex(notes);
-			this.appendAssistantMessage({
+			this.appendAssistantMessageToConversation(conversation.id, {
 				text: `Rebuilt the search index over ${notes.length} note(s).`,
 			});
 			this.addAudit({
@@ -646,7 +813,9 @@ export default class AiKnowledgeOrganizerPlugin extends Plugin {
 
 	async runVaultAudit(): Promise<void> {
 		try {
-			this.appendUserMessage('Run a vault health audit');
+			const conversation = this.appendUserMessage(
+				'Run a vault health audit',
+			);
 			const notes = await getAllMarkdownSnapshots(this.app);
 			const report = buildHealthReport(notes);
 			this.state.healthReport = report;
@@ -654,7 +823,9 @@ export default class AiKnowledgeOrganizerPlugin extends Plugin {
 				report.issues.length === 0
 					? `Checked ${report.noteCount} note(s); no health issues found.`
 					: `Checked ${report.noteCount} note(s) and found ${report.issues.length} issue(s): orphans, duplicate titles, broken links, and missing frontmatter. Run "Create governance proposals" to fix them.`;
-			this.appendAssistantMessage({ text: summary });
+			this.appendAssistantMessageToConversation(conversation.id, {
+				text: summary,
+			});
 			this.addAudit({
 				action: 'health',
 				message: `Vault audit found ${report.issues.length} issue(s) across ${report.noteCount} note(s).`,
@@ -669,14 +840,16 @@ export default class AiKnowledgeOrganizerPlugin extends Plugin {
 
 	async createGovernanceProposals(): Promise<void> {
 		try {
-			this.appendUserMessage('Create governance proposals');
+			const conversation = this.appendUserMessage(
+				'Create governance proposals',
+			);
 			const notes = await getAllMarkdownSnapshots(this.app);
 			const proposals = buildGovernanceProposals(
 				notes,
 				await getExistingPaths(this.app),
 			);
 			if (proposals.length === 0) {
-				this.appendAssistantMessage({
+				this.appendAssistantMessageToConversation(conversation.id, {
 					text: 'No governance proposals were needed — the vault structure looks healthy.',
 				});
 				await this.savePluginData();
@@ -684,7 +857,7 @@ export default class AiKnowledgeOrganizerPlugin extends Plugin {
 				return;
 			}
 			this.state.proposals.unshift(...proposals);
-			this.appendAssistantMessage({
+			this.appendAssistantMessageToConversation(conversation.id, {
 				text: `Created ${proposals.length} governance proposal(s) for index, tags, and duplicates. Review each below.`,
 				proposalIds: proposals.map((proposal) => proposal.id),
 			});
@@ -699,7 +872,10 @@ export default class AiKnowledgeOrganizerPlugin extends Plugin {
 			await this.activateView();
 			new Notice('Governance proposals created.');
 		} catch (error) {
-			await this.captureError(error, 'Governance proposal creation failed');
+			await this.captureError(
+				error,
+				'Governance proposal creation failed',
+			);
 		}
 	}
 
@@ -717,7 +893,9 @@ export default class AiKnowledgeOrganizerPlugin extends Plugin {
 	}
 
 	findProposal(proposalId: string): ChangeProposal | undefined {
-		return this.state.proposals.find((proposal) => proposal.id === proposalId);
+		return this.state.proposals.find(
+			(proposal) => proposal.id === proposalId,
+		);
 	}
 
 	private refreshView(): void {
@@ -765,7 +943,10 @@ export default class AiKnowledgeOrganizerPlugin extends Plugin {
 		const safeName = file.name.replace(/[\\/:*?"<>|]/gu, '-');
 		const lowerName = safeName.toLowerCase();
 		if (lowerName.endsWith('.md') || lowerName.endsWith('.txt')) {
-			const path = uniquePath(`${this.settings.inboxFolder}/${safeName}`, existingPaths);
+			const path = uniquePath(
+				`${this.settings.inboxFolder}/${safeName}`,
+				existingPaths,
+			);
 			await this.app.vault.create(path, await file.text());
 			existingPaths.add(path);
 			return [path];
@@ -793,7 +974,9 @@ export default class AiKnowledgeOrganizerPlugin extends Plugin {
 			`attachment: ${JSON.stringify(attachmentPath)}`,
 			'tags:',
 			'  - file-import',
-			lowerName.endsWith('.pdf') ? '  - pdf-import' : '  - attachment-import',
+			lowerName.endsWith('.pdf')
+				? '  - pdf-import'
+				: '  - attachment-import',
 			'---',
 			'',
 			`# ${sourceName}`,
@@ -809,7 +992,10 @@ export default class AiKnowledgeOrganizerPlugin extends Plugin {
 	}
 }
 
-function buildFileImportBody(lowerName: string, extractedPdfText: string): string {
+function buildFileImportBody(
+	lowerName: string,
+	extractedPdfText: string,
+): string {
 	if (!lowerName.endsWith('.pdf')) {
 		return 'Attachment imported for review and linking.';
 	}
@@ -822,6 +1008,8 @@ function buildFileImportBody(lowerName: string, extractedPdfText: string): strin
 class OrganizerView extends ItemView {
 	private composerInput?: HTMLTextAreaElement;
 	private modelPopoverEl?: HTMLElement;
+	private modelPopoverTrigger?: HTMLElement;
+	private modelPopoverCleanup?: () => void;
 
 	constructor(
 		leaf: WorkspaceLeaf,
@@ -848,6 +1036,7 @@ class OrganizerView extends ItemView {
 	}
 
 	async onClose(): Promise<void> {
+		this.closeModelPopover();
 		this.plugin.clearView(this);
 	}
 
@@ -860,9 +1049,9 @@ class OrganizerView extends ItemView {
 		if (!root) {
 			return;
 		}
+		this.closeModelPopover();
 		root.empty();
 		root.addClass('aiko-view');
-		this.modelPopoverEl = undefined;
 
 		this.renderTopbar(root);
 		this.renderChat(root);
@@ -881,12 +1070,12 @@ class OrganizerView extends ItemView {
 		if (pending > 0) {
 			const badge = bar.createEl('button', {
 				cls: 'aiko-pending-badge',
-				attr: { 'aria-label': 'Scroll to pending proposals' },
+				attr: { 'aria-label': 'Open first pending proposal' },
 			});
 			badge.createSpan({ cls: 'aiko-pending-dot' });
 			badge.createSpan({ text: `${pending} pending` });
 			badge.addEventListener('click', () => {
-				this.scrollToFirstPending();
+				void this.plugin.openFirstPendingProposal();
 			});
 		}
 
@@ -902,7 +1091,7 @@ class OrganizerView extends ItemView {
 		const history = bar.createEl('button', {
 			cls: 'aiko-icon-btn',
 			text: '🕘',
-			attr: { 'aria-label': 'Activity log' },
+			attr: { 'aria-label': 'Conversation history and activity log' },
 		});
 		history.addEventListener('click', () => {
 			new HistoryModal(this.plugin).open();
@@ -959,7 +1148,13 @@ class OrganizerView extends ItemView {
 		const body = wrap.createDiv({ cls: 'aiko-msg-body' });
 		if (message.text) {
 			const textEl = body.createDiv({ cls: 'aiko-msg-text' });
-			void MarkdownRenderer.render(this.app, message.text, textEl, '', this);
+			void MarkdownRenderer.render(
+				this.app,
+				sanitizeAssistantMarkdown(message.text),
+				textEl,
+				'',
+				this,
+			);
 		}
 		if (message.citations && message.citations.length > 0) {
 			const cites = body.createDiv({ cls: 'aiko-citations' });
@@ -969,7 +1164,11 @@ class OrganizerView extends ItemView {
 					text: citation.basename || citation.path,
 				});
 				item.addEventListener('click', () => {
-					void this.app.workspace.openLinkText(citation.path, '', false);
+					void this.app.workspace.openLinkText(
+						citation.path,
+						'',
+						false,
+					);
 				});
 			}
 		}
@@ -981,7 +1180,10 @@ class OrganizerView extends ItemView {
 		}
 	}
 
-	private renderSystemMessage(parent: HTMLElement, message: ChatMessage): void {
+	private renderSystemMessage(
+		parent: HTMLElement,
+		message: ChatMessage,
+	): void {
 		parent.createDiv({
 			cls: `aiko-msg-system${message.kind === 'error' ? ' aiko-msg-error' : ''}`,
 			text: message.text ?? '',
@@ -995,12 +1197,16 @@ class OrganizerView extends ItemView {
 			cls: 'aiko-composer-input',
 			attr: {
 				rows: '2',
+				'aria-label': 'Ask or instruct your vault',
 				placeholder:
 					'Ask or instruct your vault…  (Enter to send · Shift+Enter for newline)',
 			},
 		});
 		this.composerInput = input;
 		input.addEventListener('keydown', (event) => {
+			if (event.isComposing) {
+				return;
+			}
 			if (event.key === 'Enter' && !event.shiftKey) {
 				event.preventDefault();
 				this.submitComposer();
@@ -1009,9 +1215,14 @@ class OrganizerView extends ItemView {
 
 		const bar = composer.createDiv({ cls: 'aiko-composer-bar' });
 
-		const modelPill = bar.createEl('button', { cls: 'aiko-pill' });
+		const modelPill = bar.createEl('button', {
+			cls: 'aiko-pill',
+			attr: { 'aria-haspopup': 'true', 'aria-expanded': 'false' },
+		});
 		modelPill.createSpan({ cls: 'aiko-pill-ic', text: '⚡' });
-		modelPill.createSpan({ text: providerLabel(this.plugin.settings) });
+		modelPill.createSpan({
+			text: providerLabel(this.plugin.getEffectiveSettings()),
+		});
 		modelPill.createSpan({ cls: 'aiko-pill-caret', text: '▾' });
 		modelPill.addEventListener('click', (event) => {
 			event.stopPropagation();
@@ -1030,7 +1241,7 @@ class OrganizerView extends ItemView {
 		scopePill.addEventListener('click', () => {
 			this.plugin.settings.askScope =
 				this.plugin.settings.askScope === 'active' ? 'vault' : 'active';
-			void this.plugin.savePluginData();
+			void this.plugin.savePluginData().then(() => this.render());
 		});
 
 		const send = bar.createEl('button', {
@@ -1098,7 +1309,11 @@ class OrganizerView extends ItemView {
 			text: 'Every change is reviewed by you first and can be rolled back.',
 		});
 
-		const starters: Array<{ icon: string; label: string; run: () => void }> = [
+		const starters: Array<{
+			icon: string;
+			label: string;
+			run: () => void;
+		}> = [
 			{
 				icon: '📥',
 				label: 'Organize my inbox',
@@ -1129,77 +1344,123 @@ class OrganizerView extends ItemView {
 		}
 	}
 
+	private closeModelPopover(): void {
+		this.modelPopoverCleanup?.();
+		this.modelPopoverCleanup = undefined;
+		this.modelPopoverEl?.remove();
+		this.modelPopoverEl = undefined;
+		this.modelPopoverTrigger?.setAttribute('aria-expanded', 'false');
+		this.modelPopoverTrigger = undefined;
+	}
+
 	private toggleModelPopover(anchor: HTMLElement, pill: HTMLElement): void {
 		if (this.modelPopoverEl) {
-			this.modelPopoverEl.remove();
-			this.modelPopoverEl = undefined;
+			this.closeModelPopover();
 			return;
 		}
-		const pop = anchor.createDiv({ cls: 'aiko-model-pop' });
+		pill.setAttribute('aria-expanded', 'true');
+		this.modelPopoverTrigger = pill;
+		const pop = anchor.createDiv({
+			cls: 'aiko-model-pop',
+			attr: { 'aria-label': 'Choose model for this conversation' },
+		});
 		this.modelPopoverEl = pop;
+		const effectiveProvider = this.plugin.getEffectiveSettings().provider;
 		for (const option of providerCatalog()) {
-			const configured = isProviderConfigured(option.id, this.plugin.settings);
-			const active = option.id === this.plugin.settings.provider;
-			const item = pop.createDiv({
+			const configured = isProviderConfigured(
+				option.id,
+				this.plugin.settings,
+			);
+			const active = option.id === effectiveProvider;
+			const item = pop.createEl('button', {
 				cls: `aiko-model-item${active ? ' is-active' : ''}${
 					configured ? '' : ' is-disabled'
 				}`,
+				attr: {
+					type: 'button',
+					'aria-pressed': String(active),
+					'aria-label': `${option.label}${active ? ', selected' : ''}${
+						configured ? '' : ', needs setup'
+					}`,
+				},
 			});
-			item.createSpan({ cls: 'aiko-model-check', text: active ? '✓' : '' });
+			item.disabled = !configured;
+			item.createSpan({
+				cls: 'aiko-model-check',
+				text: active ? '✓' : '',
+			});
 			item.createSpan({ cls: 'aiko-model-label', text: option.label });
 			item.createSpan({
 				cls: 'aiko-model-prov',
 				text: configured ? option.note : '⚠ needs setup',
 			});
+			if (!configured) {
+				continue;
+			}
 			item.addEventListener('click', () => {
-				if (!configured) {
-					new Notice(`Configure ${option.label} in settings first.`);
-					return;
-				}
-				this.plugin.settings.provider = option.id;
-				void this.plugin.savePluginData();
+				const conversation = this.plugin.ensureActiveConversation();
+				conversation.providerOverride =
+					option.id === this.plugin.settings.provider
+						? undefined
+						: option.id;
+				this.closeModelPopover();
+				void this.plugin.savePluginData().then(() => this.render());
 			});
 		}
 		const close = (event: MouseEvent) => {
-			if (!this.modelPopoverEl) {
-				activeWindow.removeEventListener('click', close);
-				return;
-			}
-			if (
-				!this.modelPopoverEl.contains(event.target as Node) &&
-				!pill.contains(event.target as Node)
-			) {
-				this.modelPopoverEl.remove();
-				this.modelPopoverEl = undefined;
-				activeWindow.removeEventListener('click', close);
+			const target = event.target as Node;
+			if (!pop.contains(target) && !pill.contains(target)) {
+				this.closeModelPopover();
 			}
 		};
+		const closeOnEscape = (event: KeyboardEvent) => {
+			if (event.key !== 'Escape') {
+				return;
+			}
+			event.preventDefault();
+			this.closeModelPopover();
+			pill.focus();
+		};
 		window.setTimeout(() => {
+			if (this.modelPopoverEl !== pop) {
+				return;
+			}
 			activeWindow.addEventListener('click', close);
+			activeWindow.addEventListener('keydown', closeOnEscape);
+			this.modelPopoverCleanup = () => {
+				activeWindow.removeEventListener('click', close);
+				activeWindow.removeEventListener('keydown', closeOnEscape);
+			};
 		}, 0);
 	}
 
-	private scrollToFirstPending(): void {
-		const target = this.containerEl.querySelector('.aiko-proposal-pending');
+	scrollToProposal(proposalId: string): void {
+		const target = this.containerEl.querySelector(
+			`.aiko-proposal[data-proposal-id="${proposalId}"]`,
+		);
 		target?.scrollIntoView({ behavior: 'smooth', block: 'center' });
 	}
 
-	private renderProposal(parent: HTMLElement, proposal: ChangeProposal): void {
+	private renderProposal(
+		parent: HTMLElement,
+		proposal: ChangeProposal,
+	): void {
 		const card = parent.createDiv({
 			cls: `aiko-proposal aiko-proposal-${proposal.status}`,
+			attr: { 'data-proposal-id': proposal.id },
 		});
 		const head = card.createDiv({ cls: 'aiko-proposal-head' });
 		const title = head.createDiv();
 		title.createEl('h4', { text: proposal.title });
-		title.createEl("p", {
+		title.createEl('p', {
 			text: `${proposal.status.toUpperCase()} · ${proposal.sourcePath} · ${new Date(
 				proposal.createdAt,
 			).toLocaleString()}`,
 			cls: 'aiko-muted',
 		});
 
-		const actions = head.createDiv({ cls: "aiko-actions" });
-		if (proposal.status === "pending" || proposal.status === "failed") {
+		const actions = head.createDiv({ cls: 'aiko-actions' });
+		if (proposal.status === 'pending' || proposal.status === 'failed') {
 			const apply = actions.createEl('button', {
 				text: 'Apply selected',
 				cls: 'mod-cta',
@@ -1243,11 +1504,12 @@ class OrganizerView extends ItemView {
 		operation: PatchOperation,
 	): void {
 		const operationEl = parent.createDiv({ cls: 'aiko-operation' });
-		const row = operationEl.createDiv({ cls: "aiko-operation-row" });
-		const checkbox = activeDocument.createElement("input");
-		checkbox.type = "checkbox";
+		const row = operationEl.createDiv({ cls: 'aiko-operation-row' });
+		const checkbox = activeDocument.createElement('input');
+		checkbox.type = 'checkbox';
 		checkbox.checked = operation.selected;
-		checkbox.disabled = proposal.status === 'applied' || proposal.status === 'rejected';
+		checkbox.disabled =
+			proposal.status === 'applied' || proposal.status === 'rejected';
 		checkbox.addEventListener('change', () => {
 			void this.plugin.toggleOperation(
 				proposal.id,
@@ -1262,8 +1524,8 @@ class OrganizerView extends ItemView {
 		row.createEl('span', { text: operation.summary, cls: 'aiko-muted' });
 
 		const details = operationEl.createEl('details');
-		details.createEl("summary", { text: "Preview" });
-		if (operation.type === "update") {
+		details.createEl('summary', { text: 'Preview' });
+		if (operation.type === 'update') {
 			const diff = compactDiff(
 				buildLineDiff(operation.before, operation.after),
 			);
@@ -1281,7 +1543,10 @@ class OrganizerView extends ItemView {
 		after.createEl('pre', { text: operation.after.slice(0, 6000) });
 	}
 
-	private renderDiff(parent: HTMLElement, lines: ReturnType<typeof buildLineDiff>): void {
+	private renderDiff(
+		parent: HTMLElement,
+		lines: ReturnType<typeof buildLineDiff>,
+	): void {
 		const table = parent.createEl('table', { cls: 'aiko-diff-table' });
 		const body = table.createEl('tbody');
 		for (const line of lines.slice(0, 500)) {
@@ -1296,7 +1561,11 @@ class OrganizerView extends ItemView {
 			});
 			row.createEl('td', {
 				text:
-					line.type === 'add' ? '+' : line.type === 'remove' ? '-' : ' ',
+					line.type === 'add'
+						? '+'
+						: line.type === 'remove'
+							? '-'
+							: ' ',
 				cls: 'aiko-diff-marker',
 			});
 			row.createEl('td', {
@@ -1305,7 +1574,6 @@ class OrganizerView extends ItemView {
 			});
 		}
 	}
-
 }
 
 function stringifyError(error: unknown): string {
@@ -1313,6 +1581,81 @@ function stringifyError(error: unknown): string {
 		return error.message;
 	}
 	return String(error);
+}
+
+function sanitizeConversations(conversations: Conversation[]): Conversation[] {
+	return conversations.map((conversation) => ({
+		...conversation,
+		title: redactSecrets(conversation.title),
+		providerOverride: isProviderId(conversation.providerOverride)
+			? conversation.providerOverride
+			: undefined,
+		messages: (conversation.messages ?? []).map(sanitizeChatMessage),
+	}));
+}
+
+function sanitizeChatMessage(message: ChatMessage): ChatMessage {
+	return {
+		...message,
+		text: message.text ? redactSecrets(message.text) : undefined,
+		citations: sanitizeCitationReferences(message.citations),
+	};
+}
+
+function sanitizeCitationReferences(
+	citations: unknown,
+): CitationReference[] | undefined {
+	if (!Array.isArray(citations)) {
+		return undefined;
+	}
+	const references = citations.flatMap((citation): CitationReference[] => {
+		if (!citation || typeof citation !== 'object') {
+			return [];
+		}
+		const candidate = citation as { basename?: unknown; path?: unknown };
+		if (typeof candidate.path !== 'string' || !candidate.path) {
+			return [];
+		}
+		return [
+			{
+				path: candidate.path,
+				basename:
+					typeof candidate.basename === 'string' && candidate.basename
+						? candidate.basename
+						: candidate.path,
+			},
+		];
+	});
+	return references.length > 0 ? references : undefined;
+}
+
+function isProviderId(value: unknown): value is ProviderId {
+	return (
+		value === 'heuristic' ||
+		value === 'openai' ||
+		value === 'anthropic' ||
+		value === 'gemini' ||
+		value === 'deepseek' ||
+		value === 'ollama'
+	);
+}
+
+function toCitationReferences(citations: CandidateNote[]): CitationReference[] {
+	return citations.map((citation) => ({
+		path: citation.path,
+		basename: citation.basename,
+	}));
+}
+
+function sanitizeAssistantMarkdown(markdown: string): string {
+	return markdown
+		.replace(/!\[\[[^\]]+\]\]/gu, '[embed removed]')
+		.replace(/!\[[^\]]*\]\([^)]*\)/gu, '[image removed]')
+		.replace(
+			/<\/?(?:script|iframe|object|embed|img|video|audio|source|link|meta|style)[^>]*>/giu,
+			'',
+		)
+		.replace(/<[^>]+>/gu, '');
 }
 
 interface ProviderOption {
@@ -1369,7 +1712,36 @@ class HistoryModal extends Modal {
 	onOpen(): void {
 		const { contentEl } = this;
 		contentEl.empty();
-		contentEl.createEl('h2', { text: 'Activity log' });
+		contentEl.createEl('h2', { text: 'Conversation history' });
+		const conversations = this.plugin.state.conversations.slice(0, 50);
+		if (conversations.length === 0) {
+			contentEl.createEl('p', {
+				cls: 'aiko-muted',
+				text: 'No conversations yet.',
+			});
+		} else {
+			const list = contentEl.createEl('ul', { cls: 'aiko-history-list' });
+			for (const conversation of conversations) {
+				const item = list.createEl('li');
+				const button = item.createEl('button', {
+					cls: 'aiko-history-item',
+					text: `${
+						conversation.id ===
+						this.plugin.state.activeConversationId
+							? '✓ '
+							: ''
+					}${conversation.title} · ${conversation.messages.length} message(s) · ${new Date(
+						conversation.updatedAt,
+					).toLocaleString()}`,
+				});
+				button.addEventListener('click', () => {
+					void this.plugin.activateConversation(conversation.id);
+					this.close();
+				});
+			}
+		}
+
+		contentEl.createEl('h3', { text: 'Activity log' });
 		const entries = this.plugin.state.auditLog.slice(0, 50);
 		if (entries.length === 0) {
 			contentEl.createEl('p', {
@@ -1412,7 +1784,9 @@ class UrlImportModal extends Modal {
 			placeholder: 'https://example.com/article',
 		});
 		input.addClass('aiko-url-input');
-		const actions = contentEl.createDiv({ cls: 'aiko-actions aiko-modal-actions' });
+		const actions = contentEl.createDiv({
+			cls: 'aiko-actions aiko-modal-actions',
+		});
 		const cancel = actions.createEl('button', { text: 'Cancel' });
 		cancel.addEventListener('click', () => {
 			this.close();
@@ -1465,7 +1839,9 @@ class FileImportModal extends Modal {
 		});
 		input.multiple = true;
 		input.addClass('aiko-url-input');
-		const actions = contentEl.createDiv({ cls: 'aiko-actions aiko-modal-actions' });
+		const actions = contentEl.createDiv({
+			cls: 'aiko-actions aiko-modal-actions',
+		});
 		const cancel = actions.createEl('button', { text: 'Cancel' });
 		cancel.addEventListener('click', () => {
 			this.close();

@@ -87,7 +87,8 @@
 	padding: var(--size-2-3) var(--size-4-2);
 	background: var(--background-modifier-hover);
 	border: 1px solid var(--background-modifier-border);
-	border-radius: var(--radius-m) var(--radius-m) var(--radius-s) var(--radius-m);
+	border-radius: var(--radius-m) var(--radius-m) var(--radius-s)
+		var(--radius-m);
 	white-space: pre-wrap;
 	overflow-wrap: anywhere;
 }
@@ -244,6 +245,7 @@
 .aiko-composer-bar {
 	display: flex;
 	align-items: center;
+	flex-wrap: wrap;
 	gap: var(--size-2-3);
 	margin-top: var(--size-2-3);
 }
@@ -251,6 +253,8 @@
 .aiko-pill {
 	display: inline-flex;
 	align-items: center;
+	min-width: 0;
+	max-width: 100%;
 	gap: var(--size-2-2);
 	padding: var(--size-2-2) var(--size-2-3);
 	font-size: var(--font-ui-smaller);
@@ -304,7 +308,8 @@
 	left: var(--size-4-3);
 	bottom: 64px;
 	z-index: var(--layer-menu);
-	width: 240px;
+	width: min(240px, calc(100% - var(--size-4-6)));
+	max-width: calc(100% - var(--size-4-6));
 	padding: var(--size-2-2);
 	background: var(--background-secondary);
 	border: 1px solid var(--background-modifier-border);
@@ -315,6 +320,12 @@
 .aiko-model-item {
 	display: flex;
 	align-items: center;
+	width: 100%;
+	color: var(--text-normal);
+	text-align: left;
+	background: transparent;
+	border: 0;
+	box-shadow: none;
 	gap: var(--size-2-3);
 	padding: var(--size-2-3);
 	font-size: var(--font-ui-small);
@@ -322,7 +333,7 @@
 	cursor: pointer;
 }
 
-.aiko-model-item:hover {
+.aiko-model-item:hover:not(:disabled) {
 	background: var(--background-modifier-hover);
 }
 
@@ -330,8 +341,10 @@
 	color: var(--text-accent);
 }
 
-.aiko-model-item.is-disabled {
+.aiko-model-item.is-disabled,
+.aiko-model-item:disabled {
 	opacity: 0.55;
+	cursor: not-allowed;
 }
 
 .aiko-model-check {
@@ -478,7 +491,21 @@
 	background: var(--background-primary);
 }
 
-/* ---- Activity log (history modal) ---- */
+/* ---- Conversation history / activity log modal ---- */
+.aiko-history-list {
+	display: grid;
+	gap: var(--size-2-2);
+	padding-left: 0;
+	list-style: none;
+}
+
+.aiko-history-item {
+	width: 100%;
+	padding: var(--size-2-3);
+	text-align: left;
+	white-space: normal;
+}
+
 .aiko-audit {
 	color: var(--text-muted);
 	font-size: var(--font-ui-smaller);
