@@ -1,8 +1,19 @@
 # Changelog
 
+## 0.1.1
+
+- Redact secret-like values before persisting conversation messages, and sanitize any existing conversation history on load.
+- Internal: split `main.ts` into view, modals, and per-domain service modules (no behavior change).
+
 ## 0.1.0
 
 - Created the Obsidian plugin scaffold.
+- Added a conversational chat UI: top bar with a cross-conversation pending badge, a chat stream with proposal cards, and a bottom composer.
+- Added slash commands (`/scan`, `/analyze`, `/audit`, `/govern`, `/reindex`, `/import`) with natural-language fallback to Ask Vault.
+- Added an inline model picker limited to configured providers, with a per-conversation provider override.
+- Added multi-turn conversation memory and Markdown-rendered assistant replies.
+- Added an active-note vs whole-vault scope toggle for Ask Vault.
+- Added secret redaction before content reaches a cloud provider or the UI.
 - Added review-first analysis proposals.
 - Added active note analysis and Inbox scan.
 - Added selectable update/create operations.

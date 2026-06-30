@@ -1,7 +1,7 @@
 {
 	"id": "ai-knowledge-organizer",
 	"name": "AI Knowledge Organizer",
-	"version": "0.1.0",
+	"version": "0.1.1",
 	"minAppVersion": "1.7.2",
 	"description": "Review-first AI assistant for organizing notes, creating safe change proposals, and asking questions across your vault.",
 	"author": "Xyh",
