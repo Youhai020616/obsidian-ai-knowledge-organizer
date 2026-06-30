@@ -6,6 +6,12 @@ The plugin helps users organize notes without giving an AI direct, silent write 
 
 ## Current MVP
 
+- Work in a conversational chat interface: a top bar with a cross-conversation pending-review badge plus new conversation, history, and settings; a chat stream where AI replies and review proposals appear as cards; and a bottom composer.
+- Drive actions with slash commands (`/scan`, `/analyze`, `/audit`, `/govern`, `/reindex`, `/import`); plain text falls back to Ask Vault.
+- Pick the model inline from a picker that lists only configured providers; the choice overrides the provider for the current conversation.
+- Keep multi-turn context: recent conversation turns are threaded into follow-up answers, and assistant replies are rendered as Markdown.
+- Scope Ask Vault to the active note or the whole vault with a toggle pill, so "this note" resolves to the current note.
+- Redact secret-like values (API keys, passwords, tokens) before content reaches a cloud provider, the UI, or persisted conversation history.
 - Analyze the active Markdown note.
 - Scan a configured Inbox folder.
 - Generate a review queue with update/create operations.
@@ -112,7 +118,7 @@ The default provider is local heuristic mode and does not send note content to a
 
 ## Roadmap
 
-- v0.1: Single note analysis, Inbox scan, Ask Vault, persisted local index, vault audit, governance proposals, URL/file/PDF import, multi-provider support, review queue, apply/reject, backup/rollback.
+- v0.1: Conversational chat UI (slash commands, inline model picker, multi-turn memory, secret redaction, active-note scope), single note analysis, Inbox scan, Ask Vault, persisted local index, vault audit, governance proposals, URL/file/PDF import, multi-provider support, review queue, apply/reject, backup/rollback.
 - v0.2: Stronger failure isolation, richer import handling, and higher fidelity extraction.
 - v0.3: Better retrieval with persisted local index and citations.
 - v0.4: More privacy controls and audit exports.

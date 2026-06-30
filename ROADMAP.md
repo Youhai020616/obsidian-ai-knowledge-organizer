@@ -64,6 +64,7 @@
 - Tag governance.
 - Duplicate and orphan detection.
 - MOC/index generation.
+- Conversational agent UI with slash commands, inline model picker, multi-turn memory, and secret redaction.
 - Community plugin submission.
 
 ## External Release Steps

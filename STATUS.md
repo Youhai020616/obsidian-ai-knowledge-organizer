@@ -14,6 +14,8 @@
 - Implemented review queue with selectable operations.
 - Implemented apply, reject, backup, and rollback.
 - Implemented Ask Vault with citations.
+- Implemented a conversational chat UI (top bar with cross-conversation pending badge, chat stream with proposal cards, bottom composer), slash commands with natural-language fallback, an inline model picker with per-conversation override, multi-turn memory, Markdown-rendered replies, and an active-note/whole-vault scope toggle.
+- Implemented secret redaction before content reaches a cloud provider, the UI, or persisted conversation history.
 - Implemented vault audit.
 - Implemented rich line-level diff previews.
 - Implemented governance proposals for vault index, tag governance, and duplicate merge planning.
@@ -54,9 +56,9 @@ Last local verification passed:
 - `npm run verify:all -- --repo Youhai020616/obsidian-ai-knowledge-organizer`
 - `npm run community:pr-body -- --repo Youhai020616/obsidian-ai-knowledge-organizer --platform macOS`
 
-Current automated test coverage: 24 tests across provider selection/fallback, provider parsing, local heuristic analysis, proposal construction, vault health, diffs, governance proposals, retrieval, import extraction, PDF extraction, and vault apply/backup/rollback behavior.
+Current automated test coverage: 28 tests across provider selection/fallback, provider parsing, local heuristic analysis, proposal construction, vault health, diffs, governance proposals, retrieval, import extraction, PDF extraction, and vault apply/backup/rollback behavior.
 
 ## Remaining Toward Full Version
 
-- Publish a public GitHub repository and release for BRAT beta installation.
-- Open the Obsidian Community Plugins submission PR after the public release exists.
+- Publish 0.1.1 (privacy fix: redact secrets before persisting conversation history) as a GitHub release. 0.1.0 is already published and BRAT-installable, but does not include the fix.
+- Open the Obsidian Community Plugins submission PR.
